@@ -1,0 +1,208 @@
+version: '3.8'
+
+services:
+  # --- Infrastructure ---
+
+  # MongoDB Replica Set - Primary
+  mongo-primary:
+    image: mongo:7
+    container_name: mongo-primary
+    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27017", "--quiet"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-primary-data:/data/db
+    networks:
+      - inventory-network
+    healthcheck:
+      test: echo "try { rs.status() } catch (err) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo-primary:27017',priority:2},{_id:1,host:'mongo-secondary-1:27018'},{_id:2,host:'mongo-secondary-2:27019'}]}) }" | mongosh --port 27017 --quiet
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # MongoDB Replica Set - Secondary 1
+  mongo-secondary-1:
+    image: mongo:7
+    container_name: mongo-secondary-1
+    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27018", "--quiet"]
+    ports:
+      - "27018:27018"
+    volumes:
+      - mongo-secondary-1-data:/data/db
+    networks:
+      - inventory-network
+    depends_on:
+      - mongo-primary
+
+  # MongoDB Replica Set - Secondary 2
+  mongo-secondary-2:
+    image: mongo:7
+    container_name: mongo-secondary-2
+    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27019", "--quiet"]
+    ports:
+      - "27019:27019"
+    volumes:
+      - mongo-secondary-2-data:/data/db
+    networks:
+      - inventory-network
+    depends_on:
+      - mongo-primary
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: redis-cache
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - inventory-network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"   # AMQP protocol
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - inventory-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- Application Services ---
+
+  # API Gateway
+  api-gateway:
+    build: ./api-gateway
+    container_name: api-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - AUTH_SERVICE_URL=http://auth-service:4000
+      - INVENTORY_SERVICE_URL=http://inventory-service:5005
+      - NOTIFICATION_SERVICE_URL=http://notification-service:5002
+      - JWT_SECRET=your_jwt_secret
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - inventory-network
+    depends_on:
+      - auth-service
+      - inventory-service
+      - notification-service
+      - redis
+
+  # Auth Service
+  auth-service:
+    build: ./services/auth-service
+    container_name: auth-service
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - AUTH_SERVICE_PORT=4000
+      - MONGO_URI=mongodb://mongo-primary:27017,mongo-secondary-1:27018,mongo-secondary-2:27019/inventory_db?replicaSet=rs0
+      - JWT_SECRET=your_jwt_secret
+      - JWT_EXPIRES_IN=7d
+    networks:
+      - inventory-network
+    depends_on:
+      mongo-primary:
+        condition: service_healthy
+
+  # Inventory Service
+  inventory-service:
+    build:
+      context: .
+      dockerfile: services/inventory-service/Dockerfile
+    container_name: inventory-service
+    ports:
+      - "5005:5005"
+    environment:
+      - PORT=5005
+      - INVENTORY_SERVICE_PORT=5005
+      - MONGO_URI=mongodb://mongo-primary:27017,mongo-secondary-1:27018,mongo-secondary-2:27019/inventory_db?replicaSet=rs0
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - RABBITMQ_URL=amqp://admin:admin123@rabbitmq:5672
+      - JWT_SECRET=your_jwt_secret
+      - NOTIFICATION_SERVICE_URL=notification-service:50051 # gRPC
+    networks:
+      - inventory-network
+    depends_on:
+      mongo-primary:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  # Notification Service
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification-service/Dockerfile
+    container_name: notification-service
+    ports:
+      - "5002:5002"
+      - "50051:50051" # gRPC
+    environment:
+      - PORT=5002
+      - GRPC_PORT=50051
+      - MONGO_URI=mongodb://mongo-primary:27017,mongo-secondary-1:27018,mongo-secondary-2:27019/inventory_db?replicaSet=rs0
+      - RABBITMQ_URL=amqp://admin:admin123@rabbitmq:5672
+      - AUTH_SERVICE_URL=http://auth-service:4000
+      - JWT_SECRET=your_jwt_secret
+    networks:
+      - inventory-network
+    depends_on:
+      mongo-primary:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  # Client (Frontend)
+  client:
+    build: ./client
+    container_name: client
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_GATEWAY_URL=http://localhost:3000
+    volumes:
+      - ./client:/app
+      - /app/node_modules
+    networks:
+      - inventory-network
+    depends_on:
+      - api-gateway
+
+networks:
+  inventory-network:
+    driver: bridge
+
+volumes:
+  mongo-primary-data:
+  mongo-secondary-1-data:
+  mongo-secondary-2-data:
+  redis-data:
+  rabbitmq-data:

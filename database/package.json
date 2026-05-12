@@ -1,0 +1,13 @@
+{
+    "name": "database",
+    "version": "1.0.0",
+    "description": "Database initialization and seeding scripts",
+    "scripts": {
+        "init": "node mongo-init.js",
+        "seed": "node seed.js"
+    },
+    "dependencies": {
+        "mongodb": "^6.3.0",
+        "bcryptjs": "^2.4.3"
+    }
+}

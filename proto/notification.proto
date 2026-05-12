@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package notification;
+
+// Notification Service - handles low stock alerts and supplier notifications
+service NotificationService {
+  // Send low stock alert to supplier
+  rpc NotifyLowStock (LowStockRequest) returns (LowStockResponse);
+  
+  // Get notifications for a user
+  rpc GetNotifications (GetNotificationsRequest) returns (GetNotificationsResponse);
+  
+  // Mark notification as read
+  rpc MarkAsRead (MarkAsReadRequest) returns (MarkAsReadResponse);
+
+  // Notify manager about new order
+  rpc NotifyOrderPlaced (OrderPlacedRequest) returns (OrderPlacedResponse);
+}
+
+// Low Stock Alert Request
+message LowStockRequest {
+  string product_id = 1;
+  string product_name = 2;
+  string sku = 3;
+  int32 current_stock = 4;
+  int32 low_stock_threshold = 5;
+  string supplier_id = 6;
+  string supplier_name = 7;
+  string triggered_by = 8; // Inventory Manager ID
+}
+
+// Low Stock Alert Response
+message LowStockResponse {
+  bool success = 1;
+  string message = 2;
+  string notification_id = 3;
+}
+
+// Get Notifications Request
+message GetNotificationsRequest {
+  string user_id = 1;
+  int32 limit = 2;
+  bool unread_only = 3;
+  string user_role = 4;
+}
+
+// Notification Message
+message Notification {
+  string id = 1;
+  string type = 2;
+  string product_id = 3;
+  string product_name = 4;
+  string message = 5;
+  bool read = 6;
+  string created_at = 7;
+}
+
+// Get Notifications Response
+message GetNotificationsResponse {
+  repeated Notification notifications = 1;
+  int32 total_count = 2;
+  int32 unread_count = 3;
+}
+
+// Mark As Read Request
+message MarkAsReadRequest {
+  string notification_id = 1;
+  string user_id = 2;
+}
+
+// Mark As Read Response
+message MarkAsReadResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Notify Order Placed Request
+message OrderPlacedRequest {
+  string order_id = 1;
+  string customer_name = 2;
+  string customer_email = 3;
+  int32 total_items = 4;
+  double total_amount = 5;
+  string created_at = 6;
+}
+
+// Notify Order Placed Response
+message OrderPlacedResponse {
+  bool success = 1;
+  string message = 2;
+  string notification_id = 3;
+}

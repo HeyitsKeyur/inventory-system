@@ -1,0 +1,44 @@
+{
+  "name": "mini-inventory",
+  "version": "1.0.0",
+  "description": "Microservices-based Inventory Management System",
+  "private": true,
+  "workspaces": [
+    "api-gateway",
+    "services/*"
+  ],
+  "scripts": {
+    "install:all": "npm install && npm install --workspaces",
+    "seed": "node database/seed.js",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "start:gateway": "npm run start --workspace=api-gateway",
+    "start:auth": "npm run dev --workspace=services/auth-service",
+    "start:inventory": "npm run dev --workspace=services/inventory-service",
+    "start:order": "npm run dev --workspace=services/order-service",
+    "start:notification": "npm run dev --workspace=services/notification-service",
+    "start:client": "npm run dev --workspace=client",
+    "dev:all": "concurrently \"npm run start:gateway\" \"npm run start:auth\" \"npm run start:inventory\" \"npm run start:order\" \"npm run start:notification\" \"npm run start:client\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "inventory",
+    "microservices",
+    "graphql",
+    "grpc",
+    "kafka",
+    "mongodb",
+    "redis"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.17",
+    "dotenv": "^16.4.5",
+    "tailwindcss": "^4.1.17"
+  }
+}
